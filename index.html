@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>麻將賓果 — 台灣夜市攤位</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #120a06; font-family: 'Noto Sans TC', sans-serif; }
+  #stage { position: fixed; inset: 0; touch-action: none; }
+  .bar { position: fixed; left: 0; right: 0; z-index: 10; display: flex; justify-content: center; pointer-events: none; padding: 4px 6px; }
+  #topbar { top: 0; padding-top: max(4px, env(safe-area-inset-top)); }
+  #botbar { bottom: 0; padding-bottom: max(4px, env(safe-area-inset-bottom)); }
+  .panel { pointer-events: auto; width: 100%; max-width: 560px; background: rgba(120, 14, 10, .92); border: 2px solid #f5c542;
+    border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.6); padding: 5px 6px; color: #ffe9a8; }
+  .row { display: flex; align-items: center; gap: 5px; }
+  .chip { background: #2a0805; border: 1px solid #f5c54288; border-radius: 8px; padding: 2px 7px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .chip b { color: #ffd84d; font-size: 15px; }
+  .grow { flex: 1; }
+  .btn { border: 0; cursor: pointer; font-family: inherit; font-weight: 900; border-radius: 9px; padding: 8px 6px; font-size: 13px; transition: transform .07s; }
+  .btn:active:not(:disabled) { transform: translateY(2px); }
+  .btn:disabled { opacity: .38; }
+  .b-gold { background: linear-gradient(180deg, #ffe680, #f0b400); color: #5a1500; border: 2px solid #fff3b0; box-shadow: 0 3px 0 #9a6b00; }
+  .b-red { background: linear-gradient(180deg, #ff5a4a, #c4140c); color: #fff; border: 2px solid #ffb3a8; box-shadow: 0 3px 0 #6a0806; }
+  .b-sub { background: #3a0c08; color: #ffe9a8; border: 1px solid #f5c54299; padding: 5px 8px; }
+  #say { position: fixed; z-index: 12; left: 50%; transform: translateX(-50%); pointer-events: none; max-width: 92%;
+    background: #fffbe8; color: #3a1a08; border: 3px solid #c4140c; border-radius: 16px; padding: 6px 14px 6px 10px; font-weight: 900;
+    font-size: 15px; box-shadow: 0 4px 16px rgba(0,0,0,.5); opacity: 0; transition: opacity .2s; display: flex; gap: 8px; align-items: center; }
+  #say.show { opacity: 1; }
+  #say .who { background: #c4140c; color: #fff; border-radius: 8px; padding: 1px 6px; font-size: 12px; white-space: nowrap; }
+  #say small { display: block; font-size: 11px; color: #8a5a2a; font-weight: 700; }
+  #modal { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; padding: 18px; }
+  #modal .panel { max-width: 320px; text-align: center; padding: 16px; }
+  #modal h2 { margin: 4px 0; font-family: 'Noto Serif TC', serif; font-size: 22px; color: #ffd84d; }
+  #modal .big { font-size: 54px; line-height: 1.1; }
+  #modal p { margin: 6px 0 12px; font-size: 14px; }
+  #bag { font-size: 16px; letter-spacing: 1px; max-width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div class="bar" id="topbar">
+  <div class="panel row">
+    <div class="chip">💰 <b id="ui-coin">500</b></div>
+    <div class="chip">已摸 <b id="ui-drawn">0</b>/<span id="ui-limit">15</span></div>
+    <div class="chip">連線 <b id="ui-lines">0</b></div>
+    <div class="grow" id="bag" title="戰利品"></div>
+    <button id="btn-view" class="btn b-sub">📷 <span id="ui-view">正面</span></button>
+    <button id="btn-sound" class="btn b-sub">🔊</button>
+  </div>
+</div>
+
+<div id="say"><span class="who">老闆</span><div><span id="say-text"></span><small id="say-sub"></small></div></div>
+
+<div class="bar" id="botbar">
+  <div class="panel row">
+    <button id="btn-pay" class="btn b-red grow">💰 $100 開局</button>
+    <button id="btn-draw" class="btn b-gold grow">🀄 摸一張</button>
+    <button id="btn-auto" class="btn b-gold grow">⚡ 全部摸</button>
+    <button id="btn-extra" class="btn b-red grow" style="display:none">➕ 加摸 $20</button>
+    <button id="btn-settle" class="btn b-sub" style="display:none">結算</button>
+  </div>
+</div>
+
+<div id="modal">
+  <div class="panel">
+    <div class="big" id="m-icon">🧸</div>
+    <h2 id="m-title">一條線！</h2>
+    <p id="m-text"></p>
+    <div class="row"><button id="m-look" class="btn b-sub grow">看一下牌</button><button id="m-ok" class="btn b-gold grow">再來一局</button></div>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* =========================================================
+ * 1) 牌組：筒、條、萬 1~9 ＋ 東南西北中發白 ＋ 春夏 ＝ 36 張
+ * ========================================================= */
+const NUMCH = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const TILES = [];
+['b', 't', 'w'].forEach(s => { for (let n = 1; n <= 9; n++) TILES.push({ s, n }); });
+['東', '南', '西', '北', '中', '發', '白'].forEach(c => TILES.push({ s: 'z', c }));
+['春', '夏'].forEach(c => TILES.push({ s: 'f', c }));
+function tileName(t) {
+  if (t.s === 'b') return NUMCH[t.n] + '筒';
+  if (t.s === 't') return NUMCH[t.n] + '條';
+  if (t.s === 'w') return NUMCH[t.n] + '萬';
+  return t.c;
+}
+const NUM = 36, LIMIT = 15, MAX_EXTRA = 5, COST = 100, EXTRA_COST = 20;
+const LINES = [];
+for (let r = 0; r < 6; r++) LINES.push([0, 1, 2, 3, 4, 5].map(c => r * 6 + c));
+for (let c = 0; c < 6; c++) LINES.push([0, 1, 2, 3, 4, 5].map(r => r * 6 + c));
+LINES.push([0, 7, 14, 21, 28, 35], [5, 10, 15, 20, 25, 30]);
+
+// 賓果板：每格印一張牌（每次開局重新排列，像換一塊板）
+let boardOrder = shuffle([...Array(NUM).keys()]);      // boardOrder[cell] = tileIdx
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+/* =========================================================
+ * 2) 牌面繪製
+ * ========================================================= */
+const SERIF = '"Noto Serif TC", "Noto Sans TC", serif';
+const DOTPOS = {
+  1: [[.5, .5]], 2: [[.5, .27], [.5, .73]], 3: [[.25, .22], [.5, .5], [.75, .78]],
+  4: [[.3, .27], [.7, .27], [.3, .73], [.7, .73]], 5: [[.28, .24], [.72, .24], [.5, .5], [.28, .76], [.72, .76]],
+  6: [[.3, .2], [.7, .2], [.3, .5], [.7, .5], [.3, .8], [.7, .8]],
+  7: [[.22, .15], [.5, .25], [.78, .35], [.3, .6], [.7, .6], [.3, .84], [.7, .84]],
+  8: [[.3, .14], [.7, .14], [.3, .38], [.7, .38], [.3, .62], [.7, .62], [.3, .86], [.7, .86]],
+  9: [[.22, .2], [.5, .2], [.78, .2], [.22, .5], [.5, .5], [.78, .5], [.22, .8], [.5, .8], [.78, .8]]
+};
+function drawFace(ctx, t, x, y, w, h, faded) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.globalAlpha = faded ? 0.4 : 1;
+  const ink = '#1d2a6b', red = '#c8161d', grn = '#11804a';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (t.s === 'b') {
+    const rr = t.n === 1 ? w * 0.34 : t.n <= 4 ? w * 0.17 : t.n <= 6 ? w * 0.14 : w * 0.12;
+    DOTPOS[t.n].forEach(([px, py], i) => {
+      const cx = px * w, cy = py * h;
+      const col = t.n === 1 ? red : (t.n === 5 && i === 2) ? red : (t.n === 7 && i < 3) ? grn : (i % 2 ? grn : ink);
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr * 0.62, 0, 7); ctx.fill();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx, cy, rr * 0.3, 0, 7); ctx.fill();
+    });
+  } else if (t.s === 't') {
+    if (t.n === 1) { // 一條：小雀
+      ctx.fillStyle = grn; ctx.beginPath(); ctx.ellipse(w * .48, h * .55, w * .22, h * .2, -0.4, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(w * .66, h * .32, w * .1, 0, 7); ctx.fill();
+      ctx.fillStyle = red; ctx.beginPath(); ctx.moveTo(w * .74, h * .3); ctx.lineTo(w * .86, h * .33); ctx.lineTo(w * .74, h * .36); ctx.fill();
+      ctx.fillStyle = red; ctx.beginPath(); ctx.moveTo(w * .3, h * .62); ctx.lineTo(w * .12, h * .82); ctx.lineTo(w * .36, h * .74); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(w * .68, h * .3, w * .03, 0, 7); ctx.fill();
+    } else {
+      const n = t.n, cols = n <= 3 ? n : n <= 6 ? Math.ceil(n / 2) : 3, rows = Math.ceil(n / cols);
+      const sw = w * 0.12, sh = h * 0.8 / rows - h * 0.04;
+      for (let i = 0; i < n; i++) {
+        const r = Math.floor(i / cols), c = i % cols, cnt = Math.min(cols, n - r * cols);
+        const cx = w * (0.5 + (c - (cnt - 1) / 2) * 0.26), cy = h * 0.1 + (r + 0.5) * (h * 0.8 / rows);
+        const col = (n === 5 && i === 2) || (n === 7 && i === 0) || (n === 9 && c === 1) ? red : grn;
+        ctx.fillStyle = col; roundRect(ctx, cx - sw / 2, cy - sh / 2, sw, sh, sw * 0.4); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.fillRect(cx - sw / 2, cy - sh * 0.04, sw, sh * 0.08);
+      }
+    }
+  } else if (t.s === 'w') {
+    ctx.fillStyle = ink; ctx.font = `900 ${h * 0.36}px ${SERIF}`; ctx.fillText(NUMCH[t.n], w / 2, h * 0.28);
+    ctx.fillStyle = red; ctx.font = `900 ${h * 0.42}px ${SERIF}`; ctx.fillText('萬', w / 2, h * 0.7);
+  } else if (t.s === 'z') {
+    if (t.c === '白') { ctx.strokeStyle = ink; ctx.lineWidth = w * 0.06; ctx.strokeRect(w * .18, h * .14, w * .64, h * .72); }
+    else { ctx.fillStyle = t.c === '中' ? red : t.c === '發' ? grn : ink; ctx.font = `900 ${h * 0.6}px ${SERIF}`; ctx.fillText(t.c, w / 2, h * 0.53); }
+  } else {
+    ctx.fillStyle = '#e07a10'; [[.3, .78], [.7, .82], [.5, .9]].forEach(([a, b]) => { ctx.beginPath(); ctx.arc(w * a, h * b, w * .07, 0, 7); ctx.fill(); });
+    ctx.fillStyle = red; ctx.font = `900 ${h * 0.5}px ${SERIF}`; ctx.fillText(t.c, w / 2, h * 0.42);
+    ctx.fillStyle = grn; ctx.font = `900 ${h * 0.14}px ${SERIF}`; ctx.fillText(t.c === '春' ? '1' : '2', w * 0.82, h * 0.12);
+  }
+  ctx.restore();
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function texOf(c) { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; return t; }
+
+const faceTexCache = [];
+function faceTexture(i) {
+  if (faceTexCache[i]) return faceTexCache[i];
+  const c = mkCanvas(192, 256), ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, '#fffdf4'); g.addColorStop(1, '#f1e8cf');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 192, 256);
+  drawFace(ctx, TILES[i], 18, 18, 156, 220, false);
+  return (faceTexCache[i] = texOf(c));
+}
+
+/* =========================================================
+ * 3) 音效 ＋ 老闆語音
+ * ========================================================= */
+const SND = {
+  ctx: null, on: true, amb: null,
+  init() {
+    if (!this.ctx) { const C = window.AudioContext || window.webkitAudioContext; if (C) this.ctx = new C(); }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx && !this.amb) this.startAmbience();
+  },
+  tone(f, d, type, v, delay) {
+    if (!this.on || !this.ctx) return;
+    const t = this.ctx.currentTime + (delay || 0), o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type || 'square'; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t + d + 0.02);
+  },
+  clack(delay, vol) { // 牌碰撞「喀」聲
+    if (!this.on || !this.ctx) return;
+    const t = this.ctx.currentTime + (delay || 0), len = 0.05;
+    const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * len, this.ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 6);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const bp = this.ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400 + Math.random() * 900; bp.Q.value = 3;
+    const g = this.ctx.createGain(); g.gain.value = vol || 0.6;
+    src.connect(bp); bp.connect(g); g.connect(this.ctx.destination); src.start(t);
+  },
+  shuffle() { for (let i = 0; i < 22; i++) this.clack(i * 0.035 + Math.random() * 0.02, 0.35); },
+  flip() { this.clack(0, 0.4); },
+  place() { this.clack(0, 0.9); this.clack(0.04, 0.4); },
+  line() { [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.16, 'square', 0.1, i * 0.09)); },
+  ting() { for (let i = 0; i < 4; i++) { this.tone(1320, 0.08, 'square', 0.1, i * 0.16); this.tone(990, 0.08, 'square', 0.1, i * 0.16 + 0.08); } },
+  win() { [[523, .12], [659, .12], [784, .12], [1047, .18], [784, .1], [1047, .35]].reduce((o, [f, d]) => { this.tone(f, d, 'square', 0.11, o); return o + d * 0.9; }, 0); },
+  lose() { this.tone(330, 0.16, 'triangle', 0.15); this.tone(247, 0.3, 'triangle', 0.15, 0.16); },
+  coin() { this.tone(1800, 0.05, 'square', 0.07); this.tone(2400, 0.08, 'square', 0.07, 0.05); },
+  startAmbience() { // 夜市人聲背景（低音量濾波噪音）
+    const len = 2 * this.ctx.sampleRate, buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate), d = buf.getChannelData(0);
+    let last = 0; for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.2; }
+    const src = this.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const lp = this.ctx.createBiquadFilter(); lp.type = 'bandpass'; lp.frequency.value = 600; lp.Q.value = 0.6;
+    const g = this.ctx.createGain(); g.gain.value = this.on ? 0.05 : 0;
+    src.connect(lp); lp.connect(g); g.connect(this.ctx.destination); src.start();
+    this.amb = g;
+  },
+  setOn(v) { this.on = v; if (this.amb) this.amb.gain.value = v ? 0.05 : 0; if (!v && window.speechSynthesis) speechSynthesis.cancel(); }
+};
+
+// 老闆語音：優先用台語聲音（nan-TW），沒有就用國語 zh-TW 唸台語腔字幕
+let bossVoice = null;
+function pickVoice() {
+  if (!window.speechSynthesis) return;
+  const vs = speechSynthesis.getVoices();
+  bossVoice = vs.find(v => /^nan/i.test(v.lang)) || vs.find(v => /zh[-_]TW/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null;
+}
+if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+let sayT = null;
+function boss(tw, zh, ms) {
+  $('say-text').textContent = tw;
+  $('say-sub').textContent = zh || '';
+  const s = $('say'); s.style.top = ($('topbar').offsetHeight + 6) + 'px'; s.classList.add('show');
+  clearTimeout(sayT); sayT = setTimeout(() => s.classList.remove('show'), ms || 2600);
+  if (SND.on && window.speechSynthesis) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(tw.replace(/[～~！!]/g, '，'));
+    if (bossVoice) { u.voice = bossVoice; u.lang = bossVoice.lang; } else u.lang = 'zh-TW';
+    u.rate = 1.12; u.pitch = 0.82;
+    speechSynthesis.speak(u);
+  }
+}
+const LINES_TW = {
+  welcome: ['來喔來喔！麻將賓果，一百箍摸十五張！', '來喔來喔！麻將賓果，一百元摸十五張！'],
+  start: ['來，洗牌喔～家己揀，抑是攏總予你摸！', '來，洗牌囉～自己挑，或是全部幫你摸！'],
+  near: ['喔～欲連線矣喔！', '喔～快要連線了喔！'],
+  line: ['連線矣！真厲害！', '連線了！好厲害！'],
+  ting: ['聽牌矣！差一張爾爾，閣摸一張無？', '聽牌了！只差一張，要不要再摸一張？'],
+  missExtra: ['哎呀，閣差一屑仔！', '哎呀，還差一點點！'],
+  lose: ['無要緊，送你一粒糖仔，閣來一擺！', '沒關係，送你一顆糖，再來一次！'],
+  win1: ['恭喜恭喜！一條線，提獎品喔！', '恭喜恭喜！一條線，拿獎品囉！'],
+  win2: ['夭壽喔！兩條線，大獎啦！', '天啊！兩條線，大獎啦！'],
+  broke: ['無錢矣？頭家請你，閣送五百！', '沒錢了？老闆請客，再送五百！']
+};
+function bossLine(k, ms) { const [tw, zh] = LINES_TW[k]; boss(tw, zh, ms); }
+
+/* =========================================================
+ * 4) 3D 場景：夜市攤位
+ * ========================================================= */
+const stage = $('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x140b07);
+scene.fog = new THREE.Fog(0x140b07, 30, 70);
+(() => { // 環境反射
+  const env = new THREE.Scene();
+  env.add(new THREE.Mesh(new THREE.BoxGeometry(40, 40, 40), new THREE.MeshBasicMaterial({ color: 0x3a2516, side: THREE.BackSide })));
+  const lamp = (w, h, x, y, z, c) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); env.add(m); };
+  lamp(20, 5, 0, 18, 0, 0xfff0d0); lamp(12, 4, -16, 6, 8, 0xffb070); lamp(12, 4, 16, 6, 8, 0xffb070);
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(env, 0.03).texture;
+})();
+
+scene.add(new THREE.HemisphereLight(0xffe8c8, 0x2a1408, 0.55));
+const key = new THREE.DirectionalLight(0xfff0d6, 1.1);
+key.position.set(3, 16, 9); key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -9, right: 9, top: 10, bottom: -10, near: 1, far: 50 }); key.shadow.bias = -0.0006;
+scene.add(key);
+const warm = new THREE.PointLight(0xffa040, 0.9, 22); warm.position.set(0, 7.5, -3); scene.add(warm);
+
+const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.1, 200);
+
+// 尺寸
+const TW = 0.9, TH = 0.3, TD = 1.2;          // 牌（放在板上時）
+const PITCH_X = 1.04, PITCH_Z = 1.36;
+const BOARD_CZ = -1.2;
+const BOARD_W = PITCH_X * 6 + 0.5, BOARD_D = PITCH_Z * 6 + 0.5;
+const BOARD_TOP = 0.16;
+const PILE_S = 0.44, PILE_Z0 = 3.85, PILE_PX = 0.43, PILE_PZ = 0.6;
+function cellPos(cell) {
+  const r = Math.floor(cell / 6), c = cell % 6;
+  return new THREE.Vector3((c - 2.5) * PITCH_X, BOARD_TOP + TH / 2, BOARD_CZ + (r - 2.5) * PITCH_Z);
+}
+
+const M = {
+  felt: new THREE.MeshStandardMaterial({ color: 0x1f6b3c, roughness: 0.95 }),
+  wood: new THREE.MeshStandardMaterial({ color: 0x7a3f1a, roughness: 0.55 }),
+  darkWood: new THREE.MeshStandardMaterial({ color: 0x3d1d0c, roughness: 0.7 }),
+  ivory: new THREE.MeshStandardMaterial({ color: 0xfaf3df, roughness: 0.35 }),
+  back: new THREE.MeshStandardMaterial({ color: 0x1f8a54, roughness: 0.3 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0xcfd6dc, metalness: 1, roughness: 0.3 }),
+  redPlastic: new THREE.MeshStandardMaterial({ color: 0xd8211a, roughness: 0.4 }),
+  wire: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 })
+};
+function glowTex() {
+  const c = mkCanvas(64, 64), x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.3, 'rgba(255,210,140,.7)'); g.addColorStop(1, 'rgba(255,140,40,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+}
+const GLOW = glowTex();
+
+function makeBannerTex() {
+  const c = mkCanvas(1400, 220), x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 220); g.addColorStop(0, '#d8201a'); g.addColorStop(1, '#a8100c');
+  x.fillStyle = g; x.fillRect(0, 0, 1400, 220);
+  x.strokeStyle = '#ffd24d'; x.lineWidth = 8; x.strokeRect(14, 14, 1372, 192);
+  x.fillStyle = '#ffe14d'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = `900 130px ${SERIF}`; x.shadowColor = 'rgba(0,0,0,.5)'; x.shadowOffsetY = 5; x.shadowBlur = 4;
+  x.fillText('麻將賓果', 560, 112);
+  x.shadowBlur = 0; x.shadowOffsetY = 0;
+  x.fillStyle = '#fff6d0'; roundRect(x, 1000, 40, 340, 140, 18); x.fill();
+  x.fillStyle = '#b8100c'; x.font = `900 46px ${SERIF}`; x.fillText('$100', 1170, 85); x.font = `900 40px ${SERIF}`; x.fillText('摸十五張', 1170, 140);
+  x.fillStyle = '#ffe14d'; x.font = `900 44px ${SERIF}`; x.fillText('★', 140, 112); x.fillText('★', 980 - 0, 112);
+  return texOf(c);
+}
+function makePrizeTex() {
+  const c = mkCanvas(1400, 640), x = c.getContext('2d');
+  x.fillStyle = '#3a1a0c'; x.fillRect(0, 0, 1400, 640);
+  // 洞洞板
+  x.fillStyle = '#4a2412'; for (let i = 20; i < 1400; i += 40) for (let j = 20; j < 640; j += 40) { x.beginPath(); x.arc(i, j, 4, 0, 7); x.fill(); }
+  const tiers = [
+    { t: '兩條線', p: '大獎', e: ['🧸', '🎮', '🎧'], col: '#ffd24d' },
+    { t: '一條線', p: '好禮', e: ['🐼', '🚗', '⚽', '🪀'], col: '#ff8a5a' },
+    { t: '安慰獎', p: '糖果', e: ['🍬', '🍭', '🍫', '🧃', '🍬'], col: '#9be3ff' }
+  ];
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  tiers.forEach((tr, r) => {
+    const y = 110 + r * 200;
+    x.fillStyle = '#7a3f1a'; x.fillRect(30, y + 70, 1340, 18);
+    x.fillStyle = '#fff6d0'; roundRect(x, 40, y - 60, 230, 120, 14); x.fill();
+    x.fillStyle = '#b8100c'; x.font = `900 46px ${SERIF}`; x.fillText(tr.t, 155, y - 18);
+    x.fillStyle = '#3a1a0c'; x.font = `900 34px ${SERIF}`; x.fillText(tr.p, 155, y + 30);
+    x.font = `${r === 0 ? 120 : r === 1 ? 100 : 80}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    const n = tr.e.length, sx = 330, span = 1020;
+    tr.e.forEach((em, i) => x.fillText(em, sx + span * (i + 0.5) / n, y + 4));
+  });
+  return texOf(c);
+}
+function makeSignTex() {
+  const c = mkCanvas(420, 520), x = c.getContext('2d');
+  x.fillStyle = '#fffbe8'; x.fillRect(0, 0, 420, 520);
+  x.strokeStyle = '#b8100c'; x.lineWidth = 10; x.strokeRect(10, 10, 400, 500);
+  x.fillStyle = '#b8100c'; x.textAlign = 'center'; x.font = `900 52px ${SERIF}`; x.fillText('玩法', 210, 80);
+  x.fillStyle = '#1d2a6b'; x.font = `700 34px ${SERIF}`; x.textAlign = 'left';
+  ['① 摸十五張', '② 照板放牌', '③ 橫直斜連線', '④ 聽牌可加摸', '   每張 $20'].forEach((s, i) => x.fillText(s, 40, 150 + i * 72));
+  return texOf(c);
+}
+function makeBoardTex() {
+  const cw = 160, ch = 210, pad = 40, W = cw * 6 + pad * 2, H = ch * 6 + pad * 2;
+  const c = mkCanvas(W, H), x = c.getContext('2d');
+  x.fillStyle = '#fff8e6'; x.fillRect(0, 0, W, H);
+  for (let cell = 0; cell < 36; cell++) {
+    const r = Math.floor(cell / 6), cc = cell % 6, X = pad + cc * cw, Y = pad + r * ch;
+    x.fillStyle = (r + cc) % 2 ? '#ffe9e0' : '#fff3d6'; x.fillRect(X, Y, cw, ch);
+    drawFace(x, TILES[boardOrder[cell]], X + 18, Y + 20, cw - 36, ch - 40, true);
+    x.strokeStyle = '#c4140c'; x.lineWidth = 3; x.strokeRect(X, Y, cw, ch);
+  }
+  x.strokeStyle = '#c4140c'; x.lineWidth = 10; x.strokeRect(pad - 6, pad - 6, cw * 6 + 12, ch * 6 + 12);
+  return texOf(c);
+}
+
+const pickables = [];     // 牌堆中可點的牌
+const pileTiles = [];     // { mesh, tileIdx, used }
+const cellGlows = [];
+const lightBulbs = [];
+let boardMat;
+
+function tileMaterials(i) {
+  return [M.ivory, M.ivory, new THREE.MeshStandardMaterial({ map: faceTexture(i), roughness: 0.3 }), M.back, M.ivory, M.ivory];
+}
+const tileGeo = (() => { const g = new THREE.BoxGeometry(TW, TH, TD, 1, 1, 1); return g; })();
+// 牌身做兩層：象牙白 + 綠背
+function makeTile(i) {
+  const grp = new THREE.Group();
+  const face = new THREE.Mesh(new THREE.BoxGeometry(TW, TH * 0.62, TD), tileMaterials(i));
+  face.position.y = TH * 0.19; face.castShadow = true; grp.add(face);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(TW, TH * 0.38, TD), M.back);
+  back.position.y = -TH * 0.31; back.castShadow = true; grp.add(back);
+  grp.userData.tileIdx = i;
+  return grp;
+}
+
+function buildBooth() {
+  // 地面（柏油＋紅磚）
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0x2a1f19, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = -3.2; ground.receiveShadow = true; scene.add(ground);
+
+  // 攤位桌
+  const table = new THREE.Mesh(new THREE.BoxGeometry(10.6, 0.5, 13.4), M.wood);
+  table.position.set(0, -0.25, 0.1); table.receiveShadow = true; scene.add(table);
+  const felt = new THREE.Mesh(new THREE.PlaneGeometry(10.2, 13.0), M.felt);
+  felt.rotation.x = -Math.PI / 2; felt.position.set(0, 0.005, 0.1); felt.receiveShadow = true; scene.add(felt);
+  const skirt = new THREE.Mesh(new THREE.BoxGeometry(10.7, 2.9, 0.1), M.redPlastic);
+  skirt.position.set(0, -1.85, 6.8); scene.add(skirt);
+  [-5.1, 5.1].forEach(x => { const s = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.9, 13.4), M.redPlastic); s.position.set(x, -1.85, 0.1); scene.add(s); });
+
+  // 賓果板（木框 + 壓克力）
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(BOARD_W + 0.4, 0.14, BOARD_D + 0.4), M.darkWood);
+  frame.position.set(0, 0.07, BOARD_CZ); frame.castShadow = true; frame.receiveShadow = true; scene.add(frame);
+  boardMat = new THREE.MeshStandardMaterial({ map: makeBoardTex(), roughness: 0.4 });
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_W, BOARD_D), boardMat);
+  board.rotation.x = -Math.PI / 2; board.position.set(0, BOARD_TOP - 0.005, BOARD_CZ); board.receiveShadow = true; scene.add(board);
+  board.userData.fit = true;
+
+  // 格子光（連線金光 / 聽牌閃紅）
+  for (let i = 0; i < 36; i++) {
+    const p = cellPos(i);
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(PITCH_X, PITCH_Z), new THREE.MeshBasicMaterial({ color: 0xffd200, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    g.rotation.x = -Math.PI / 2; g.position.set(p.x, BOARD_TOP + 0.01, p.z); scene.add(g);
+    cellGlows.push({ mesh: g, mode: 0 });
+  }
+
+  // 背牆：獎品板 + 紅布招牌
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(11.4, 5.2), new THREE.MeshStandardMaterial({ map: makePrizeTex(), roughness: 0.8 }));
+  wall.position.set(0, 2.7, -6.7); scene.add(wall);
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(11.8, 1.8, 0.12), [M.redPlastic, M.redPlastic, M.redPlastic, M.redPlastic, new THREE.MeshStandardMaterial({ map: makeBannerTex(), roughness: 0.75 }), M.redPlastic]);
+  banner.position.set(0, 6.25, -6.55); scene.add(banner);
+  // 鐵架
+  [-5.85, 5.85].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 10.5, 12), M.steel); p.position.set(x, 2.1, -6.6); scene.add(p); });
+  const topBar = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 11.8, 12), M.steel); topBar.rotation.z = Math.PI / 2; topBar.position.set(0, 7.25, -6.6); scene.add(topBar);
+
+  // 燈泡串（電線下垂）
+  const N = 15;
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1), x = -5.8 + t * 11.6, y = 7.2 - Math.sin(t * Math.PI * 3) ** 2 * 0.45 - 0.25;
+    const col = [0xffd24d, 0xff5a3a, 0x7ad8ff, 0x8aff8a, 0xff8ad8][i % 5];
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), new THREE.MeshBasicMaterial({ color: col }));
+    bulb.position.set(x, y, -6.3); scene.add(bulb);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: col, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+    sp.scale.set(1.0, 1.0, 1); sp.position.copy(bulb.position); scene.add(sp);
+    lightBulbs.push({ sp, base: 0.9, ph: Math.random() * 6 });
+  }
+
+  // 手寫玩法牌（立在左後方）
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.1), new THREE.MeshStandardMaterial({ map: makeSignTex(), roughness: 0.8 }));
+  sign.position.set(-4.3, 1.05, -5.6); sign.rotation.y = 0.35; sign.rotation.x = -0.15; scene.add(sign);
+
+  // 零錢鐵盒
+  const tin = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.6, 24), new THREE.MeshStandardMaterial({ color: 0xe63c2a, metalness: 0.6, roughness: 0.35 }));
+  tin.position.set(4.25, 0.3, -5.6); tin.castShadow = true; scene.add(tin);
+  const coins = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 24), new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 1, roughness: 0.3 }));
+  coins.position.set(4.25, 0.58, -5.6); scene.add(coins);
+
+  // 牌堆底盤
+  const tray = new THREE.Mesh(new THREE.BoxGeometry(18 * PILE_PX + 0.5, 0.08, 2 * PILE_PZ + 0.5), M.darkWood);
+  tray.position.set(0, 0.04, PILE_Z0 + PILE_PZ / 2); tray.receiveShadow = true; scene.add(tray);
+}
+
+function pileSlot(k) {
+  const row = Math.floor(k / 18), col = k % 18;
+  return new THREE.Vector3((col - 8.5) * PILE_PX, 0.08 + TH * PILE_S / 2, PILE_Z0 + row * PILE_PZ);
+}
+function dealPile(order, animate) {
+  pileTiles.forEach(p => scene.remove(p.mesh));
+  pileTiles.length = 0; pickables.length = 0;
+  order.forEach((ti, k) => {
+    const m = makeTile(ti);
+    m.scale.setScalar(PILE_S);
+    m.rotation.z = Math.PI; // 背面朝上
+    const target = pileSlot(k);
+    m.rotation.y = (Math.random() - 0.5) * 0.12;
+    if (animate) { m.position.set((Math.random() - 0.5) * 3, 3 + Math.random() * 2, PILE_Z0 - 1); }
+    else m.position.copy(target);
+    scene.add(m);
+    const pt = { mesh: m, tileIdx: ti, used: false, target, settle: animate ? 0.25 + k * 0.025 : 0, t: 0 };
+    m.traverse(o => { if (o.isMesh) { o.userData.pile = pt; pickables.push(o); } });
+    pileTiles.push(pt);
+  });
+}
+
+/* =========================================================
+ * 5) 遊戲流程
+ * ========================================================= */
+const G = {
+  phase: 'IDLE',  // IDLE | DRAW | TING | END
+  coin: 500, drawn: 0, extra: 0, filled: new Set(), busy: false, lines: 0, bag: []
+};
+const flights = [];
+const boardTiles = [];
+
+function cellOfTile(ti) { return boardOrder.indexOf(ti); }
+function countLines() { return LINES.filter(l => l.every(c => G.filled.has(c))).length; }
+function tingCells() {
+  const s = new Set();
+  LINES.forEach(l => { const miss = l.filter(c => !G.filled.has(c)); if (miss.length === 1) s.add(miss[0]); });
+  return [...s];
+}
+
+function refresh() {
+  $('ui-coin').textContent = G.coin;
+  $('ui-drawn').textContent = G.drawn;
+  $('ui-limit').textContent = LIMIT + G.extra;
+  $('ui-lines').textContent = G.lines;
+  $('bag').textContent = G.bag.join('');
+  const idle = G.phase === 'IDLE' || G.phase === 'END';
+  $('btn-pay').style.display = idle ? '' : 'none';
+  $('btn-draw').style.display = G.phase === 'DRAW' ? '' : 'none';
+  $('btn-auto').style.display = G.phase === 'DRAW' ? '' : 'none';
+  $('btn-extra').style.display = G.phase === 'TING' ? '' : 'none';
+  $('btn-settle').style.display = G.phase === 'TING' ? '' : 'none';
+  $('btn-draw').disabled = G.busy; $('btn-auto').disabled = G.busy;
+  $('btn-extra').disabled = G.busy || G.coin < EXTRA_COST;
+  $('btn-extra').textContent = `➕ 加摸 $${EXTRA_COST}（剩 ${MAX_EXTRA - G.extra}）`;
+}
+
+function updateGlows() {
+  const done = new Set(); LINES.forEach(l => { if (l.every(c => G.filled.has(c))) l.forEach(c => done.add(c)); });
+  const ting = (G.phase === 'DRAW' || G.phase === 'TING') ? tingCells() : [];
+  cellGlows.forEach((g, i) => { g.mode = done.has(i) ? 1 : ting.includes(i) ? 2 : 0; });
+}
+
+function newGame() {
+  SND.init();
+  if (G.phase !== 'IDLE' && G.phase !== 'END') return;
+  if (G.coin < COST) { G.coin += 500; bossLine('broke'); refresh(); return; }
+  G.coin -= COST; SND.coin();
+  G.phase = 'DRAW'; G.drawn = 0; G.extra = 0; G.filled.clear(); G.lines = 0;
+  boardTiles.forEach(m => scene.remove(m)); boardTiles.length = 0;
+  boardOrder = shuffle([...Array(NUM).keys()]);
+  boardMat.map.dispose(); boardMat.map = makeBoardTex(); boardMat.needsUpdate = true;
+  dealPile(shuffle([...Array(NUM).keys()]), true);
+  SND.shuffle();
+  bossLine('start');
+  updateGlows(); refresh();
+}
+
+function drawTile(pt) {
+  if (G.busy || !pt || pt.used) return;
+  if (!(G.phase === 'DRAW' || (G.phase === 'TING' && pt.extraOk))) return;
+  G.busy = true; pt.used = true; G.drawn++;
+  const cell = cellOfTile(pt.tileIdx);
+  const m = pt.mesh;
+  m.traverse(o => { if (o.isMesh) { const i = pickables.indexOf(o); if (i >= 0) pickables.splice(i, 1); } });
+  flights.push({
+    m, cell, t: 0, dur: 0.75,
+    from: m.position.clone(), to: cellPos(cell),
+    r0: m.rotation.z, s0: m.scale.x, flipped: false
+  });
+  SND.flip();
+  refresh();
+}
+function randomUnused() { const a = pileTiles.filter(p => !p.used); return a[Math.floor(Math.random() * a.length)]; }
+
+function onLanded(f) {
+  boardTiles.push(f.m);
+  G.filled.add(f.cell);
+  SND.place();
+  const before = G.lines; G.lines = countLines();
+  if (G.lines > before) { SND.line(); bossLine('line'); }
+  else if (G.phase === 'DRAW' && tingCells().length && Math.random() < 0.35 && G.drawn < LIMIT) bossLine('near', 1500);
+  G.busy = false;
+  updateGlows();
+  const limit = LIMIT + G.extra;
+  if (G.drawn >= limit) afterLimit();
+  else if (autoRun) setTimeout(() => drawTile(randomUnused()), 120);
+  refresh();
+}
+
+let autoRun = false;
+function afterLimit() {
+  autoRun = false;
+  const ting = tingCells();
+  if (G.lines < 2 && ting.length && G.extra < MAX_EXTRA && G.coin >= EXTRA_COST) {
+    G.phase = 'TING'; SND.ting(); bossLine('ting', 3200);
+    pileTiles.forEach(p => p.extraOk = true);
+  } else settle();
+  updateGlows(); refresh();
+}
+function buyExtra() {
+  if (G.phase !== 'TING' || G.busy || G.coin < EXTRA_COST || G.extra >= MAX_EXTRA) return;
+  G.coin -= EXTRA_COST; G.extra++; SND.coin();
+  refresh();
+  drawTile(randomUnused());
+}
+
+function settle() {
+  G.phase = 'END';
+  const L = G.lines;
+  let icon, title, text, prize;
+  if (L >= 2) { icon = ['🧸', '🎮', '🎧'][Math.floor(Math.random() * 3)]; title = `${L} 條線！大獎！`; prize = 2000; bossLine('win2', 3200); SND.win(); }
+  else if (L === 1) { icon = ['🐼', '🚗', '⚽', '🪀'][Math.floor(Math.random() * 4)]; title = '一條線！'; prize = 500; bossLine('win1', 3000); SND.win(); }
+  else { icon = ['🍬', '🍭', '🍫', '🧃'][Math.floor(Math.random() * 4)]; title = '差一點點！'; prize = 10; bossLine('lose', 3000); SND.lose(); }
+  text = L ? `得到 ${icon}，再加 ${prize} 元代幣` : `安慰獎 ${icon}，加 ${prize} 元代幣`;
+  G.coin += prize; G.bag.push(icon); if (G.bag.length > 30) G.bag.shift();
+  setTimeout(() => {
+    $('m-icon').textContent = icon; $('m-title').textContent = title; $('m-text').textContent = text;
+    $('modal').style.display = 'flex';
+  }, 900);
+  updateGlows(); refresh();
+}
+
+/* =========================================================
+ * 6) 操作
+ * ========================================================= */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+renderer.domElement.addEventListener('pointerdown', e => {
+  SND.init();
+  if (G.phase !== 'DRAW' || G.busy || autoRun) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects(pickables, false)[0];
+  if (hit) drawTile(hit.object.userData.pile);
+});
+$('btn-pay').onclick = newGame;
+$('btn-draw').onclick = () => { SND.init(); drawTile(randomUnused()); };
+$('btn-auto').onclick = () => { SND.init(); if (G.phase !== 'DRAW') return; autoRun = true; drawTile(randomUnused()); refresh(); };
+$('btn-extra').onclick = buyExtra;
+$('btn-settle').onclick = () => { if (G.phase === 'TING' && !G.busy) settle(); };
+$('m-ok').onclick = () => { $('modal').style.display = 'none'; G.phase = 'END'; newGame(); };
+$('m-look').onclick = () => { $('modal').style.display = 'none'; refresh(); };
+$('btn-sound').onclick = () => { SND.setOn(!SND.on); $('btn-sound').textContent = SND.on ? '🔊' : '🔇'; };
+
+/* =========================================================
+ * 7) 兩個視角：正面（看到整個攤位）/ 俯視（看清楚板子）
+ * ========================================================= */
+const VIEWS = [
+  { name: '正面', el: 0.78, box: new THREE.Box3(new THREE.Vector3(-5.6, -0.3, -6.7), new THREE.Vector3(5.6, 7.3, 5.4)) },
+  { name: '俯視', el: 1.42, box: new THREE.Box3(new THREE.Vector3(-4.0, 0, -6.9), new THREE.Vector3(4.0, 0.3, 5.15)) }
+];
+let viewIdx = 0;
+const camCur = { pos: new THREE.Vector3(), tgt: new THREE.Vector3() }, camGoal = { pos: new THREE.Vector3(), tgt: new THREE.Vector3() };
+function solveView(v) {
+  const w = window.innerWidth, h = Math.max(1, window.innerHeight);
+  const topPx = $('topbar').offsetHeight * 0.6, botPx = $('botbar').offsetHeight * 0.8;
+  const yMax = 1 - 2 * topPx / h, yMin = -1 + 2 * botPx / h;
+  const b = v.box, corners = [];
+  for (let i = 0; i < 8; i++) corners.push(new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z));
+  const dir = new THREE.Vector3(0, Math.sin(v.el), Math.cos(v.el));
+  const target = b.getCenter(new THREE.Vector3());
+  const place = d => { camera.position.copy(target).addScaledVector(dir, d); camera.lookAt(target); camera.updateMatrixWorld(); };
+  const range = () => { let a = 9, bb = -9, c = 9, d = -9; corners.forEach(p => { const q = p.clone().project(camera); a = Math.min(a, q.x); bb = Math.max(bb, q.x); c = Math.min(c, q.y); d = Math.max(d, q.y); }); return { x0: a, x1: bb, y0: c, y1: d }; };
+  let dist = 30;
+  for (let pass = 0; pass < 3; pass++) {
+    let lo = 3, hi = 200;
+    for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; place(mid); const r = range(); if (r.x0 >= -0.98 && r.x1 <= 0.98 && r.y1 - r.y0 <= yMax - yMin) hi = mid; else lo = mid; }
+    place(hi); dist = hi;
+    const r = range(), shift = (r.y0 + r.y1) / 2 - (yMin + yMax) / 2;
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    target.addScaledVector(up, shift * hi * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  }
+  return { pos: target.clone().addScaledVector(dir, dist), tgt: target };
+}
+function setView(i, instant) {
+  viewIdx = i; $('ui-view').textContent = VIEWS[i].name;
+  const s = solveView(VIEWS[i]); camGoal.pos.copy(s.pos); camGoal.tgt.copy(s.tgt);
+  if (instant) { camCur.pos.copy(s.pos); camCur.tgt.copy(s.tgt); }
+}
+$('btn-view').onclick = () => setView((viewIdx + 1) % VIEWS.length);
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / Math.max(1, window.innerHeight); camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight); setView(viewIdx, true);
+});
+
+/* =========================================================
+ * 8) 主迴圈
+ * ========================================================= */
+const clock = new THREE.Clock();
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function loop() {
+  requestAnimationFrame(loop);
+  const dt = Math.min(clock.getDelta(), 0.05), now = performance.now() / 1000;
+
+  // 洗牌落下
+  pileTiles.forEach(p => {
+    if (p.used || p.settle <= 0) return;
+    p.t += dt;
+    if (p.t >= p.settle) {
+      const k = Math.min(1, (p.t - p.settle) / 0.25);
+      p.mesh.position.lerp(p.target, Math.min(1, k * 0.5 + 0.15));
+      if (k >= 1) { p.mesh.position.copy(p.target); p.settle = 0; }
+    }
+  });
+
+  // 摸牌飛行：抬起 → 翻面 → 放到格子
+  for (let i = flights.length - 1; i >= 0; i--) {
+    const f = flights[i];
+    f.t += dt / f.dur;
+    const t = Math.min(1, f.t), e = ease(t);
+    f.m.position.lerpVectors(f.from, f.to, e);
+    f.m.position.y += Math.sin(t * Math.PI) * 2.6;
+    const s = f.s0 + (1 - f.s0) * e; f.m.scale.setScalar(s);
+    const flipT = Math.min(1, Math.max(0, (t - 0.1) / 0.5));
+    f.m.rotation.z = f.r0 * (1 - ease(flipT));
+    f.m.rotation.y *= 0.9;
+    if (!f.flipped && flipT > 0.5) { f.flipped = true; SND.flip(); }
+    if (t >= 1) { f.m.position.copy(f.to); f.m.rotation.set(0, 0, 0); f.m.scale.setScalar(1); flights.splice(i, 1); onLanded(f); }
+  }
+
+  // 格子光
+  cellGlows.forEach(g => {
+    const o = g.mode === 1 ? 0.45 + 0.15 * Math.sin(now * 5) : g.mode === 2 ? (Math.sin(now * 9) > 0 ? 0.55 : 0.1) : 0;
+    g.mesh.material.opacity += (o - g.mesh.material.opacity) * Math.min(1, dt * 12);
+    g.mesh.material.color.setHex(g.mode === 2 ? 0xff2a1a : 0xffd200);
+  });
+
+  // 燈泡閃爍
+  lightBulbs.forEach((b, i) => { b.sp.material.opacity = b.base * (0.75 + 0.25 * Math.sin(now * 3 + b.ph)) * (G.phase === 'END' && G.lines ? (Math.floor(now * 6 + i) % 2 ? 1 : 0.3) : 1); });
+
+  // 相機平滑切換
+  const k = Math.min(1, dt * 4);
+  camCur.pos.lerp(camGoal.pos, k); camCur.tgt.lerp(camGoal.tgt, k);
+  camera.position.copy(camCur.pos); camera.lookAt(camCur.tgt);
+
+  renderer.render(scene, camera);
+}
+
+/* =========================================================
+ * 9) 啟動
+ * ========================================================= */
+buildBooth();
+dealPile(shuffle([...Array(NUM).keys()]), false);
+setView(0, true);
+refresh();
+loop();
+setTimeout(() => bossLine('welcome', 3000), 600);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {
+  faceTexCache.length = 0;
+  boardMat.map.dispose(); boardMat.map = makeBoardTex(); boardMat.needsUpdate = true;
+  setView(viewIdx, true);
+});
+})();
+</script>
+</body>
+</html>
